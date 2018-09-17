@@ -411,8 +411,8 @@ void execute_command(parsed_command parsed_input){
 	} else {
 	// parent process must wait for child process to finish
 		if(parsed_input.background_process == false){
-			//waitpid(pid, &status, WUNTRACED | WCONTINUED);
-			wait(NULL);
+			waitpid(pid, &status, WUNTRACED | WCONTINUED);
+			//wait(NULL);
 		} else {
 			head = add_node(process_index, "Running", parsed_input.command, pid, head);
 			process_index += 1;
@@ -555,8 +555,8 @@ void execute_pipe_command(parsed_command parsed_input){
 
 			// if its not a background process then wait
 			if(parsed_input.background_process == false){
-				//waitpid(pid_c2, &status, WUNTRACED | WCONTINUED);
-				waitpid(pid_c2, &status, 0);
+				waitpid(pid_c2, &status, WUNTRACED | WCONTINUED);
+				//waitpid(pid_c2, &status, 0);
 			} else {
 				head = add_node(process_index, "Running", parsed_input.command, pid_c1, head);
 				process_index += 1;
