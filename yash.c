@@ -96,7 +96,8 @@ void sig_handler_sigtstp_child(int signo){
 }
 
 void sig_handler_test(int signo){
-	printf("\n# ");
+	// find process number and add into jobs list
+	printf("\n");
 	fflush(stdout);
 }
 
@@ -112,10 +113,10 @@ int main() {
 	pid_t wpid;
 
 	parent_pid = getpid();
-	/*parent_pid = getpid();
+	parent_pid = getpid();
 	setpgid(parent_pid, parent_pid);
-	tcsetgrp(0, parent_pid);
-*/
+	tcsetpgrp(0, parent_pid);
+
 
 	// SIGNAL HANDLING
 	
@@ -400,7 +401,7 @@ void execute_command(parsed_command parsed_input){
 	// execute command
 		if(execvp(parsed_input.parsed_token[0], parsed_input.parsed_token) < 0){
 			// WILL ONLY EXECUTE IF EXECVP FAILS
-			perror("EXECVP FAILED\n");
+			printf("%s: command not found\n", parsed_input.parsed_token[0]);
 			exit(EXIT_FAILURE);
 		}
 	
@@ -479,7 +480,7 @@ void execute_pipe_command(parsed_command parsed_input){
 		// executed command
 		if(execvp(parsed_input.parsed_token[0], parsed_input.parsed_token) < 0){
 			// WILL ONLY EXECUTE IF EXECVP FAILS
-			perror("EXECVP FAILED\n");
+			printf("%s: command not found\n", parsed_input.parsed_token[0]);
 			exit(EXIT_FAILURE);
 		}
 
@@ -541,7 +542,7 @@ void execute_pipe_command(parsed_command parsed_input){
 			// execute second command
 			if(execvp(parsed_input.parsed_token2[0], parsed_input.parsed_token2) < 0){
 				// WILL ONLY EXECUTE IF EXECVP FAILS
-				perror("EXECVP FAILED\n");
+				printf("%s: command not found\n", parsed_input.parsed_token[0]);
 				exit(EXIT_FAILURE);
 			}
 
