@@ -22,6 +22,7 @@ struct jobs{
 	pid_t pid;
 	int id;
 	char * state;
+	char * bgfg;
 	char * command;
 	jobs * next;
 };
@@ -49,58 +50,110 @@ typedef struct{
 
 // GLOBAL VARIABLE TO HOLD MOST RECENT JOB NUMBER
 // GLOBAL ARRAY FOR ALL JOBS
-int process_index = 0;
+int process_index = 1;
 jobs * head = NULL;
 pid_t recent_job;
 pid_t parent_pid;
 char * recent_command;
+pid_t live_process_pid;
+int status;
 // FUNCTION HEADERS
 parsed_command parse_input(char * input);
 void jobs_func();
 void execute_command(parsed_command parsed_input);
 void execute_pipe_command(parsed_command parsed_input);
 jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head);
+jobs * remove_node(pid_t process_id);
+bool node_exists(pid_t process_id);
 void fg_func();
 void bg_func();
 void sig_handler_test();
+void sig_handler_sigtstp();
+void sig_handler_sigint();
+jobs * set_job_bgfg(pid_t process, int fgbg);
+jobs * update_state(pid_t process_id, char * state);
 //void sig_handler_sigchild(int signo);
 
 
-void sig_handler_sigchild(int signo){
-	int status;
-	pid_t kek = waitpid(-1, &status, 0);
-	printf("CHILD EXITED: %d\n", (int) kek);
-}
-
 void sig_handler_sigtstp(int signo){
-	printf("%d\n", signo);
-	if(signo != parent_pid){
-		printf("RECENT JOB: %d\n", recent_job);
+	printf("\n**************************************** SIGTSTP HANDLER ****************************************\n");
+	if(parent_pid != recent_job){
+		// set recent stopped job flag to foreground
+		printf("TSTP HANDLER sent kill to process that caught ^Z\n\n");
 		kill(recent_job, SIGTSTP);
-		printf("PARENT JOB: %d\n", parent_pid);
-		kill(parent_pid, SIGCONT);
 	}
-
-}
-
-void sig_handler_sigtstp_child(int signo){
-	printf("parent: %d\n", parent_pid);
-	printf("current pid: %d\n", tcgetpgrp(STDIN_FILENO));
-	if(getpid() != parent_pid){
-		printf("this worked?\n");
-		add_node(process_index, "Stopped", recent_command, getpid(), head);
-		process_index += 1;
-		kill(-1, SIGTSTP);
-		kill(parent_pid, SIGCONT);
-	}
-}
-
-void sig_handler_test(int signo){
-	// find process number and add into jobs list
-	printf("\n");
 	fflush(stdout);
 }
 
+void sig_handler_sigint(int signo){
+	if(parent_pid != recent_job){
+		printf("\n");
+		fflush(stdout);
+		kill(recent_job, SIGINT);
+	}
+}
+
+
+void sig_handler_child(int signo){
+	printf("\n**************************************** SIGCHLD HANDLER ****************************************\n");
+	printf("STATUS in Child Handler: %d\n", status);
+	if(WIFEXITED(status)){
+
+		printf("forground process caught and exited normally\n");
+		// if process in the foreground exits and it exists in the job table, remove it
+		if(node_exists(recent_job)){
+			printf("remove the job cause it exists in the table?\n");
+			head = remove_node(recent_job);
+		}
+
+	} else if(WIFSTOPPED(status)){
+		
+		printf("foreground process caught tstp signal\n");
+
+		// special case where process was stopped -> fg -> ^z so it should be stopped again
+		if(node_exists(recent_job)){
+
+			// set job status to stopped
+			head = update_state(recent_job, "Stopped");
+			// set background/forground status to background
+			head = set_job_bgfg(recent_job, 1);
+
+		} else {
+
+			// add stopped command into jobs table
+			head = add_node(process_index, "Stopped", recent_command, recent_job, head);
+			//head = set_job_bgfg(recent_job, 1);
+		
+		}
+
+	} else {
+
+		printf("background process calling sig child\n");
+		// catch backgroun dprocesses completing
+		pid_t pid_handler = waitpid(-1, &status, WNOHANG);
+	
+		printf("Process ID in Handler: %d\n", pid_handler);
+		printf("Recent Job in Handler: %d\n", recent_job);
+	
+		if(WIFSTOPPED(status)){
+
+			printf("Successful signal caught\n");
+			printf("THIS SHOULD NEVER RUN\n");
+			head = set_job_bgfg(recent_job, 1);
+			head = add_node(process_index, "Stopped", recent_command, pid_handler, head);
+
+		} else if (WIFEXITED(status)){
+
+			//printf("STATUS: %d\n", status);
+			printf("Successful exit of background process: %d\n", pid_handler);
+			head = update_state(pid_handler, "Done");
+
+		}
+
+	}
+	status = -1;
+	printf("\n");
+}
 
 
 int main() {
@@ -109,35 +162,23 @@ int main() {
 	char ** parsed_input;
 	pid_t pid;
 	char * input;
-	int status = 0;
 	pid_t wpid;
 
 	parent_pid = getpid();
-	parent_pid = getpid();
+	printf("PARENT PID: %d\n", getpid());
 	setpgid(parent_pid, parent_pid);
-	tcsetpgrp(0, parent_pid);
-
-
+	//tcsetpgrp(0, parent_pid);
+	recent_job = getpid();
+	live_process_pid = getpid();
+	status = -1;
 	// SIGNAL HANDLING
 	
-	if(signal(SIGINT, SIG_IGN) == SIG_ERR) printf("signal(SIGINT) error\n");
-	if(signal(SIGTSTP, sig_handler_test) == SIG_ERR) perror("signal(SIGTSTP) error\n");
-	if(signal(SIGCHLD, SIG_DFL) == SIG_ERR) perror("signal(SIGCHLD error \n");
-	if(signal(SIGQUIT, SIG_IGN) == SIG_ERR) perror("signal(SIGQUIT error \n");
-	if(signal(SIGTTIN, SIG_IGN) == SIG_ERR) perror("signal(SIGTTIN error \n");
-	if(signal(SIGTTOU, SIG_IGN) == SIG_ERR) perror("signal(SIGTTOU error \n");
-	/*if(signal(SIGTSTP, sig_handler_sigtstp_child) == SIG_ERR){
-		printf("signal (SIGTSTP) error\n");
-	}*/
-	
-	// default reaping of child
-	/*if(signal(SIGCHLD, sig_handler_sigchild) == SIG_ERR){
-		printf("signal (SIGCHLD) error\n");
-	}*/
-	/*if(signal(SIGCHLD, SIG_DFL) == SIG_ERR){
-		printf("signal (SIGCHLD) error\n");
-	}
-	*/
+	if(signal(SIGINT, sig_handler_sigint) == SIG_ERR) printf("signal(SIGINT) error");
+	if(signal(SIGTSTP, sig_handler_sigtstp) == SIG_ERR) perror("signal(SIGTSTP) error");
+	if(signal(SIGCHLD, sig_handler_child) == SIG_ERR) perror("signal(SIGCHLD error");
+	//if(signal(SIGQUIT, SIG_IGN) == SIG_ERR) perror("signal(SIGQUIT error\n");
+	//if(signal(SIGTTIN, SIG_IGN) == SIG_ERR) perror("signal(SIGTTIN error\n");
+	//if(signal(SIGTTOU, SIG_IGN) == SIG_ERR) perror("signal(SIGTTOU error\n");
 
 
 	while(input = readline("# ")){
@@ -164,10 +205,11 @@ int main() {
 				execute_command(parsed_input);
 			}
 		}
+		printf("recent job shell: %d\n", recent_job);
 		// free malloc stuff
 		free(parsed_input.parsed_token);
 		free(parsed_input.parsed_token2);
-		//recent_job = getpid();
+		live_process_pid = getpid();
 	}
 }
 
@@ -289,7 +331,7 @@ parsed_command parse_input(char * input){
 			parsed_info.parsed_token = realloc(parsed_info.parsed_token, max_words * sizeof(char*));
 			// check for mem allocation error
 			if(!parsed_info.parsed_token){
-				perror("ALLOCATION ERROR\n");
+				perror("ALLOCATION ERROR");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -298,7 +340,7 @@ parsed_command parse_input(char * input){
 			max_words2 += 20;
 			parsed_info.parsed_token2 = realloc(parsed_info.parsed_token, max_words2 * sizeof(char*));
 			if(!parsed_info.parsed_token2){
-				perror("ALLOCATION ERROR\n");
+				perror("ALLOCATION ERROR");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -313,6 +355,7 @@ parsed_command parse_input(char * input){
 }
 
 // print jobs table
+// will need to remove done nodes *********************************
 void jobs_func(){
 	jobs * current = head;
 	while(current != NULL){
@@ -328,8 +371,14 @@ void jobs_func(){
 
 // adds node to job linked list
 jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head){
+	if(node_exists(pid)){
+		head = update_state(pid, state);
+		return head;
+	}
+	process_index += 1;
 	jobs * process = (jobs*) malloc(sizeof(jobs));
 	process->id = id;
+	process->bgfg = "background";
 	process->state = strdup(state);
 	process->command = strdup(command);
 	process->pid = pid;
@@ -349,34 +398,15 @@ jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head){
 
 // execute command
 void execute_command(parsed_command parsed_input){
-	int status;
 
 	pid_t pid = fork();
 
 			
 	if(pid == 0){	// child process
-		// SIGNAL HANDLING
-		//signal(SIGINT, SIG_DFL);
-        signal(SIGQUIT, SIG_DFL);
-        signal(SIGTSTP, SIG_DFL);
-        signal(SIGTTIN, SIG_DFL);
-        signal(SIGTTOU, SIG_DFL);
-        signal(SIGCHLD, SIG_DFL);
-		//recent_job = getpid()
-		if(signal(SIGINT, SIG_DFL) == SIG_ERR){
-			printf("signal (SIGINT) child error\n");
-		} 
-		/*if(signal(SIGTSTP, sig_handler_sigtstp_child) == SIG_ERR){
-			printf("signal (SIGTSTP) child error\n");
-		}*/
-		
-		/*if(setpgid(getpid(), getpid()) < 0){
-			perror("SETPGID FAIL\n");
-			exit(EXIT_FAILURE);
-		}*/
 
 		// input redirection
 		if(parsed_input.io_file_input != NULL){
+			printf("SUCCESS: <\n");
 			int file = open(parsed_input.io_file_input, O_RDONLY);
 			if (file < 0){
 				perror(parsed_input.io_file_input);
@@ -388,17 +418,20 @@ void execute_command(parsed_command parsed_input){
 
 		// output redirection
 		if(parsed_input.io_file_output != NULL){
+			printf("SUCCESS: >\n");
 			int file = open(parsed_input.io_file_output, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
 			dup2(file, STDOUT_FILENO);
 			close(file);
 		}
+
 		// error redirection
 		if(parsed_input.io_file_error != NULL){
 			int file = open(parsed_input.io_file_error, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
 			dup2(file, STDERR_FILENO);
 			close(file);
 		}
-	// execute command
+
+		// execute command
 		if(execvp(parsed_input.parsed_token[0], parsed_input.parsed_token) < 0){
 			// WILL ONLY EXECUTE IF EXECVP FAILS
 			printf("%s: command not found\n", parsed_input.parsed_token[0]);
@@ -407,25 +440,37 @@ void execute_command(parsed_command parsed_input){
 	
 	} else if(pid < 0) {
 		// ERROR CODE CAUSE FORK FAILED
-		perror("FORK FAILED CHILD\n");
+		perror("FORK FAILED CHILD");
 		exit(EXIT_FAILURE);
 	} else {
 	// parent process must wait for child process to finish
+		// ***************************************************************************
+		//jobs
+		//setpgid(pid, pid);
+		recent_job = pid;
+		live_process_pid = pid;
 		if(parsed_input.background_process == false){
-			waitpid(pid, &status, WUNTRACED | WCONTINUED);
+			//printf("child pid?: %d\n", pid);
+			if((recent_job = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
+				perror("WAITPID failed");
+			}
+			if(WIFSTOPPED(status)){
+				printf("caught ^z in yash\n");
+			}
+			status = -1;
+			//printf("STATUS: %d\n", status);
+			// FG BG COMMANDS
 			//wait(NULL);
 		} else {
 			head = add_node(process_index, "Running", parsed_input.command, pid, head);
-			process_index += 1;
 		}
 	}
 }
 
-// execyte a ouoed cinnabd
+// execute a piped command
 void execute_pipe_command(parsed_command parsed_input){
 	pid_t pid_c1;
 	pid_t pid_c2;
-	int status;
 
 	int pfd[2];
 	pipe(pfd);
@@ -485,7 +530,7 @@ void execute_pipe_command(parsed_command parsed_input){
 		}
 
 	} else if(pid_c1 < 0){	// PID child 1 is error
-		perror("FORK ERROR CHILD 1\n");
+		perror("FORK ERROR CHILD 1");
 		exit(EXIT_FAILURE);
 
 	} else {	// PARENT CODE
@@ -547,27 +592,152 @@ void execute_pipe_command(parsed_command parsed_input){
 			}
 
 		} else if(pid_c2 < 0){	// error for child 2
-			perror("FORK ERROR CHILD 2\n");
+			perror("FORK ERROR CHILD 2");
 			exit(EXIT_FAILURE);
 		} else {	// parent
-			//wait(NULL);	// MAYBE NEED TO WAIT TWICE????????????????????
 			close(pfd[0]);
 			close(pfd[1]);
 
+			setpgid(pid_c1, pid_c1);
+			setpgid(pid_c2, pid_c1);
+
+			recent_job = pid_c1;
+			live_process_pid = pid_c1;
 			// if its not a background process then wait
 			if(parsed_input.background_process == false){
 				waitpid(pid_c2, &status, WUNTRACED | WCONTINUED);
+				status = -1;
 				//waitpid(pid_c2, &status, 0);
 			} else {
 				head = add_node(process_index, "Running", parsed_input.command, pid_c1, head);
-				process_index += 1;
 			}
 		}
 	}
 }
 
-// TODO
-void fg_func(){}
+// check if process exists in job table
+bool node_exists(pid_t process_id){
+	jobs * current = head;
+	while(current != NULL){
+		if(current->pid == process_id){
+			return true;
+		}
+		current = current->next;
+	}
+	return false;
+}
+
+jobs * update_state(pid_t process_id, char * state){
+	jobs * current = head;
+	while(current != NULL){
+		if(current->pid == process_id){
+			current->state = strdup(state);
+		}
+		current = current->next;
+	}
+	return head;
+}
 
 // TODO
-void bg_func(){}
+void fg_func(){
+	jobs * current = head;
+	if(current == NULL){
+		return;
+	}
+	while(current->next != NULL){
+		current = current->next;
+	}
+
+	current->state = "Running";
+	current->bgfg = "foreground";
+	printf("current->pid: %d\n", current->pid);
+	
+	recent_job = current->pid;
+	live_process_pid = current->pid;
+	recent_command = current->command;
+	
+	if(kill(current->pid, SIGCONT)) perror("Kill (SIGCONT) error");
+	printf("are we getting here?\n");
+	
+	if((waitpid(current->pid, &status, WUNTRACED)) < 0) perror("WAIT PID ERROR");
+	
+	status = -1;
+}
+
+// TODO
+void bg_func(){
+	jobs * current = head;
+	jobs * process = current;
+	if(current == NULL){
+		return;
+	}
+	while(current != NULL){
+		if(strcmp(current->state, "Stopped")){
+			while(current != process){
+				process = process->next;
+			}
+		}
+		current = current->next;
+	}
+	process->state = "Running";
+	//recent_job = process->pid;
+	//recent_command = process->command;
+	if(kill(process->pid, SIGCONT)) perror("Kill (SIGCONT) error");
+	status = -1;
+}
+
+// need to work on this function >:( maybe works now?
+jobs * remove_node(pid_t process_id){
+	//printf("remove node process id: %d\n", process_id);
+	printf("process id received into remove_node function: %d\n", process_id);
+	jobs * current = head;
+	jobs * prev = NULL;
+	if(head == NULL){
+		return NULL;
+	}
+	if (head->next == NULL){
+		if(head->pid == process_id){
+			if(strcmp(head->bgfg, "foreground") == 0){
+				//free(head->state);
+				free(head->command);
+				free(head);
+				return NULL;	
+			} else {
+				head->state = "Done";
+			}
+		}
+		return head;
+	}
+	while(current != NULL){
+		if(current->pid == process_id){
+			if(strcmp(head->bgfg, "foreground") == 0){
+				//free(current->state);
+				free(current->command);
+				prev->next = current->next;
+				free(current);				
+			} else {
+				current->state = "Done";
+			}
+
+		}
+		prev = current;
+		current = current->next;
+	}
+	return head;
+}
+
+jobs * set_job_bgfg(pid_t process, int fgbg){
+	jobs * current = head;
+	while(current != NULL){
+		if(current->pid == process){
+			if(fgbg){
+				current->bgfg = "background";				
+			} else {
+				current -> bgfg = "foreground";
+			}
+
+		}
+		current = current->next;
+	}
+	return head;
+}
