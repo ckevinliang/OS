@@ -8,6 +8,7 @@
 #include <readline/history.h>
 #include <fcntl.h>
 
+// ********************************************** DATA STRUCTURES **********************************************
 // boolean struct
 typedef int bool;
 #define true 1
@@ -48,8 +49,7 @@ typedef struct{
 	bool background_process;
 } parsed_command;
 
-// GLOBAL VARIABLE TO HOLD MOST RECENT JOB NUMBER
-// GLOBAL ARRAY FOR ALL JOBS
+// ********************************************** GLOBAL VARS **********************************************
 int process_index = 1;
 jobs * head = NULL;
 pid_t recent_job;
@@ -57,7 +57,8 @@ pid_t parent_pid;
 char * recent_command;
 pid_t live_process_pid;
 int status;
-// FUNCTION HEADERS
+
+// ********************************************** FUNCTION HEADERS **********************************************
 parsed_command parse_input(char * input);
 void jobs_func();
 void execute_command(parsed_command parsed_input);
@@ -72,8 +73,9 @@ void sig_handler_sigtstp();
 void sig_handler_sigint();
 jobs * set_job_bgfg(pid_t process, int fgbg);
 jobs * update_state(pid_t process_id, char * state);
-//void sig_handler_sigchild(int signo);
+jobs * print_done_processes();
 
+// ********************************************** SIGNAL HANDLERS **********************************************
 
 void sig_handler_sigtstp(int signo){
 	printf("\n**************************************** SIGTSTP HANDLER ****************************************\n");
@@ -210,6 +212,7 @@ int main() {
 		free(parsed_input.parsed_token);
 		free(parsed_input.parsed_token2);
 		live_process_pid = getpid();
+		head = print_done_processes();
 	}
 }
 
@@ -358,14 +361,18 @@ parsed_command parse_input(char * input){
 // will need to remove done nodes *********************************
 void jobs_func(){
 	jobs * current = head;
+	jobs * temp = NULL;
 	while(current != NULL){
 		if (current->next != NULL){
-			printf("[%d]-	%s    			%s\n", current->id, current->state, current->command);	
+			printf("[%d]-	%s    			%s\n", current->id, current->state, current->command);
 		} else {
 			printf("[%d]+	%s    			%s\n", current->id, current->state, current->command);	
 		}
-						
-		current = current->next;
+		temp = current->next;
+		if(strcmp(current->state, "Done") == 0){
+			head = remove_node(current->pid);
+		}		
+		current = temp;
 	}
 }
 
@@ -393,6 +400,7 @@ jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head){
 		}
 		current->next = process;
 	}
+	printf("SUCCESSFUL ADDITION TO JOB TABLE\n");
 	return head;
 }
 
@@ -462,6 +470,7 @@ void execute_command(parsed_command parsed_input){
 			// FG BG COMMANDS
 			//wait(NULL);
 		} else {
+			printf("foreground process has & so add to job table and send to background\n");
 			head = add_node(process_index, "Running", parsed_input.command, pid, head);
 		}
 	}
@@ -697,32 +706,26 @@ jobs * remove_node(pid_t process_id){
 	}
 	if (head->next == NULL){
 		if(head->pid == process_id){
-			if(strcmp(head->bgfg, "foreground") == 0){
-				//free(head->state);
-				free(head->command);
-				free(head);
-				return NULL;	
-			} else {
-				head->state = "Done";
-			}
+			//free(head->state);
+			free(head->command);
+			free(head);
+			return NULL;	
 		}
-		return head;
 	}
+
 	while(current != NULL){
 		if(current->pid == process_id){
-			if(strcmp(head->bgfg, "foreground") == 0){
-				//free(current->state);
-				free(current->command);
-				prev->next = current->next;
-				free(current);				
-			} else {
-				current->state = "Done";
-			}
-
+			//free(current->state);
+			free(current->command);
+			prev->next = current->next;
+			free(current);				
 		}
+
 		prev = current;
 		current = current->next;
+
 	}
+
 	return head;
 }
 
@@ -736,6 +739,23 @@ jobs * set_job_bgfg(pid_t process, int fgbg){
 				current -> bgfg = "foreground";
 			}
 
+		}
+		current = current->next;
+	}
+	return head;
+}
+
+jobs * print_done_processes(){
+	jobs * current = head;
+	while(current != NULL){
+		if(strcmp(current->state, "Done") == 0){
+			if (current->next != NULL){
+				printf("[%d]-	%s    			%s\n", current->id, current->state, current->command);
+			} else {
+				printf("[%d]+	%s    			%s\n", current->id, current->state, current->command);	
+			}
+
+			head = remove_node(current->pid);
 		}
 		current = current->next;
 	}
