@@ -78,13 +78,13 @@ jobs * print_done_processes();
 // ********************************************** SIGNAL HANDLERS **********************************************
 
 void sig_handler_sigtstp(int signo){
-	printf("\n**************************************** SIGTSTP HANDLER ****************************************\n");
+	//printf("\n**************************************** SIGTSTP HANDLER ****************************************\n");
 	if(parent_pid != live_process_pid){
 		// set recent stopped job flag to foreground
-		printf("TSTP HANDLER sent kill to process that caught ^Z\n\n");
-		kill(live_process_pid, SIGTSTP);
+		//printf("TSTP HANDLER sent kill to process that caught ^Z\n\n");
+		kill(-recent_job, SIGTSTP);
 	}
-	fflush(stdout);
+	//fflush(stdout);
 }
 
 void sig_handler_sigint(int signo){
@@ -98,22 +98,22 @@ void sig_handler_sigint(int signo){
 
 
 void sig_handler_child(int signo){
-	printf("\n**************************************** SIGCHLD HANDLER ****************************************\n");
-	printf("STATUS in Child Handler: %d\n", status);
-	printf("Recent Job in Handler: %d\n", recent_job);
+	//printf("\n**************************************** SIGCHLD HANDLER ****************************************\n");
+	//printf("STATUS in Child Handler: %d\n", status);
+	//printf("Recent Job in Handler: %d\n", recent_job);
 	// caught a signal from a foreground process
 	if(WIFEXITED(status)){
 
-		printf("forground process caught and exited normally\n");
+		//printf("forground process caught and exited normally\n");
 		// if process in the foreground exits and it exists in the job table, remove it
 		if(node_exists(recent_job)){
-			printf("remove the job cause it exists in the table?\n");
+			//printf("remove the job cause it exists in the table?\n");
 			head = remove_node(recent_job);
 		}
 
 	} else if(WIFSTOPPED(status)){
 		
-		printf("foreground process caught tstp signal\n");
+		//printf("foreground process caught tstp signal\n");
 
 		// special case where process was stopped -> fg -> ^z so it should be stopped again
 		if(node_exists(recent_job)){
@@ -134,12 +134,13 @@ void sig_handler_child(int signo){
 	// caught a signal from a background process
 	} else {
 
-		printf("background process calling sig child\n");
-		// catch backgroun dprocesses completing
+		//printf("background process calling sig child\n");
+		// catch background processes completing
 		pid_t pid_handler = waitpid(-1, &status, WNOHANG);
 	
-		printf("Process ID in Handler: %d\n", pid_handler);
-		printf("Recent Job in Handler: %d\n", recent_job);
+		//printf("Process ID in Handler: %d\n", pid_handler);
+		//printf("Recent Job in Handler: %d\n", recent_job);
+		//printf("Status in child handler: %d\n", status);
 	
 		if(WIFSTOPPED(status)){
 
@@ -147,18 +148,31 @@ void sig_handler_child(int signo){
 			printf("THIS SHOULD NEVER RUN\n");
 			head = set_job_bgfg(recent_job, 1);
 			head = add_node(process_index, "Stopped", recent_command, pid_handler, head);
-*/
+			*/	
+			//printf("%s\n", recent_command);
+			//head = remove_node(recent_job);
+		//	printf("shouldn't get here\n");
+
 		} else if (WIFEXITED(status)){
 
-			printf("STATUS: %d\n", status);
+			if(pid_handler == 0){
+		//		printf("if background process exits and pid_handler doesn't error out remove node\n");
+				head = remove_node(recent_job);
+			}
+		//	printf("STATUS: %d\n", status);
 			head = update_state(pid_handler, "Done");
-			printf("Successful exit of background process: %d\n", pid_handler);
+		//	printf("Successful exit of background process: %d\n", pid_handler);
+			
 
 		}
-
+		/* else if(pid_handler == -1){
+			printf("%s\n", recent_command);
+			head = remove_node(recent_job);			
+		}*/
+		status = -1;
 	}
-	status = -1;
-	printf("\n");
+
+	//printf("\n");
 }
 
 
@@ -170,7 +184,8 @@ int main() {
 	char * input;
 	pid_t wpid;
 	parent_pid = getpid();
-	printf("PARENT PID: %d\n", getpid());
+	//printf("PARENT PID: %d\n", getpid());
+	bool no_printo = false;
 	setpgid(parent_pid, parent_pid);
 	//tcsetpgrp(0, parent_pid);
 	recent_job = getpid();
@@ -178,7 +193,7 @@ int main() {
 	status = -1;
 	// SIGNAL HANDLING
 	
-	if(signal(SIGINT, sig_handler_sigint) == SIG_ERR) printf("signal(SIGINT) error");
+	if(signal(SIGINT, sig_handler_sigint) == SIG_ERR) perror("signal(SIGINT) error");
 	if(signal(SIGTSTP, sig_handler_sigtstp) == SIG_ERR) perror("signal(SIGTSTP) error");
 	if(signal(SIGCHLD, sig_handler_child) == SIG_ERR) perror("signal(SIGCHLD error");
 
@@ -206,15 +221,14 @@ int main() {
 				execute_command(parsed_input);
 			}
 		}
-		printf("recent job shell: %d\n", recent_job);
+		//printf("recent job shell: %d\n", recent_job);
 		// free malloc stuff
 		free(parsed_input.parsed_token);
 		free(parsed_input.parsed_token2);
 		live_process_pid = getpid();
-
 		// print and reap done messages if bg/fg wern't run
+		head = print_done_processes();
 
-		head = print_done_processes();	
 	}
 }
 
@@ -250,11 +264,11 @@ parsed_command parse_input(char * input){
 
 	// check for mem allocation error
 	if(!parsed_info.parsed_token){
-		printf("ALLOCATION ERROR\n");
+		//printf("ALLOCATION ERROR\n");
 		exit(EXIT_FAILURE);
 	}
 	if(!parsed_info.parsed_token2){
-		printf("ALLOCATION ERROR\n");
+		//printf("ALLOCATION ERROR\n");
 		exit(EXIT_FAILURE);
 	}
 
@@ -336,7 +350,7 @@ parsed_command parse_input(char * input){
 			parsed_info.parsed_token = realloc(parsed_info.parsed_token, max_words * sizeof(char*));
 			// check for mem allocation error
 			if(!parsed_info.parsed_token){
-				perror("ALLOCATION ERROR");
+				//perror("ALLOCATION ERROR");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -345,7 +359,7 @@ parsed_command parse_input(char * input){
 			max_words2 += 20;
 			parsed_info.parsed_token2 = realloc(parsed_info.parsed_token, max_words2 * sizeof(char*));
 			if(!parsed_info.parsed_token2){
-				perror("ALLOCATION ERROR");
+				//perror("ALLOCATION ERROR");
 				exit(EXIT_FAILURE);
 			}
 		}
@@ -354,7 +368,7 @@ parsed_command parse_input(char * input){
 	}
 
 	parsed_info.parsed_token[i] = NULL;
-	//parsed_info.parsed_token2[j] = NULL;
+	parsed_info.parsed_token2[j] = NULL;
 
 	return parsed_info;
 }
@@ -388,7 +402,7 @@ void jobs_func(){
 // adds node to job linked list
 jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head){
 	if(node_exists(pid)){
-		printf("add_node updating state??\n");
+		//printf("add_node updating state??\n");
 		head = update_state(pid, state);
 		return head;
 	}
@@ -410,7 +424,7 @@ jobs * add_node(int id, char * state, char * command, pid_t pid, jobs * head){
 		}
 		current->next = process;
 	}
-	printf("SUCCESSFUL ADDITION TO JOB TABLE\n");
+	//printf("SUCCESSFUL ADDITION TO JOB TABLE\n");
 	return head;
 }
 
@@ -424,7 +438,7 @@ void execute_command(parsed_command parsed_input){
 
 		// input redirection
 		if(parsed_input.io_file_input != NULL){
-			printf("SUCCESS: <\n");
+			//printf("SUCCESS: <\n");
 			int file = open(parsed_input.io_file_input, O_RDONLY);
 			if (file < 0){
 				perror(parsed_input.io_file_input);
@@ -436,7 +450,7 @@ void execute_command(parsed_command parsed_input){
 
 		// output redirection
 		if(parsed_input.io_file_output != NULL){
-			printf("SUCCESS: >\n");
+			//printf("SUCCESS: >\n");
 			int file = open(parsed_input.io_file_output, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR | S_IWUSR);
 			dup2(file, STDOUT_FILENO);
 			close(file);
@@ -458,7 +472,7 @@ void execute_command(parsed_command parsed_input){
 	
 	} else if(pid < 0) {
 		// ERROR CODE CAUSE FORK FAILED
-		perror("FORK FAILED CHILD");
+		//perror("FORK FAILED CHILD");
 		exit(EXIT_FAILURE);
 	} else {
 	// parent process must wait for child process to finish
@@ -469,15 +483,16 @@ void execute_command(parsed_command parsed_input){
 		live_process_pid = pid;
 		if(parsed_input.background_process == false){
 			//printf("child pid?: %d\n", pid);
-			if((recent_job = waitpid(pid, &status, WUNTRACED | WCONTINUED)) == -1){
-				perror("WAITPID failed");
+			if((recent_job = waitpid(-pid, &status, WUNTRACED | WCONTINUED)) == -1){
+				//perror("WAITPID failed");
 			}
+			//printf("reset status variable in execute command\n");
 			status = -1;
 			//printf("STATUS: %d\n", status);
 			// FG BG COMMANDS
 			//wait(NULL);
 		} else {
-			printf("foreground process has & so add to job table and send to background with pid: %d\n", pid);
+			//printf("foreground process has & so add to job table and send to background with pid: %d\n", pid);
 			head = add_node(process_index, "Running", parsed_input.command, pid, head);
 		}
 	}
@@ -546,7 +561,7 @@ void execute_pipe_command(parsed_command parsed_input){
 		}
 
 	} else if(pid_c1 < 0){	// PID child 1 is error
-		perror("FORK ERROR CHILD 1");
+		//perror("FORK ERROR CHILD 1");
 		exit(EXIT_FAILURE);
 
 	} else {	// PARENT CODE
@@ -596,7 +611,7 @@ void execute_pipe_command(parsed_command parsed_input){
 			}
 
 		} else if(pid_c2 < 0){	// error for child 2
-			perror("FORK ERROR CHILD 2");
+			//perror("FORK ERROR CHILD 2");
 			exit(EXIT_FAILURE);
 		} else {	// parent
 			close(pfd[0]);
@@ -645,25 +660,34 @@ jobs * update_state(pid_t process_id, char * state){
 // TODO
 void fg_func(){
 	jobs * current = head;
+	jobs * done = NULL;
 	if(current == NULL){
 		return;
 	}
 	while(current->next != NULL){
+		if(strcmp(current->state, "Done") != 0){
+			done = current;
+		}
 		current = current->next;
 	}
+	if(strcmp(current->state, "Done") != 0){
+		done = current;
+	}
+	if(done == NULL){
+		return;
+	}
+	done->state = "Running";
+	done->bgfg = "foreground";
+	//printf("FG / current->pid: %d\n", current->pid);
+	
+	recent_job = done->pid;
+	live_process_pid = done->pid;
+	recent_command = done->command;
+	
+	if(kill(-done->pid, SIGCONT));
+	printf("%s\n", done->command);		
 
-	current->state = "Running";
-	current->bgfg = "foreground";
-	printf("FG / current->pid: %d\n", current->pid);
-	
-	recent_job = current->pid;
-	live_process_pid = current->pid;
-	recent_command = current->command;
-	
-	if(kill(-current->pid, SIGCONT)) perror("Kill (SIGCONT) error");
-	printf("%s\n", current->command);
-	if((waitpid(-current->pid, &status, WUNTRACED)) < 0) perror("WAIT PID ERROR");
-	
+	if(waitpid(-done->pid, &status, WUNTRACED) == -1);
 	status = -1;
 }
 
@@ -688,30 +712,30 @@ void bg_func(){
 	}
 	// no stopped processes
 	if(process == NULL){
-		printf("No Stopped Processes for BG to grab\n");
+		//printf("No Stopped Processes for BG to grab\n");
 		return;
 	}
 	process->state = "Running";
 
-	printf("BG / current->pid: %d\n", process->pid);
+	//printf("BG / current->pid: %d\n", process->pid);
 	//recent_job = process->pid;
 	//recent_command = process->command;
-	if(kill(-process->pid, SIGCONT)) perror("Kill (SIGCONT) error");
+	if(kill(-process->pid, SIGCONT));
 	// stopped process is last job
 	if(process == last_node){
-		printf("[%d]+ %s &\n", process->id, process->command);	
+		printf("[%d]+ %s\n", process->id, process->command);	
 	} else {
 		// stopped process is not last job
-		printf("[%d]- %s &\n", process->id, process->command);	
+		printf("[%d]- %s\n", process->id, process->command);	
 	}
 
-	status = -1;
+	//status = -1;
 }
 
 // need to work on this function >:( maybe works now?
 jobs * remove_node(pid_t process_id){
 	//printf("remove node process id: %d\n", process_id);
-	printf("process id received into remove_node function: %d\n", process_id);
+	//printf("process id received into remove_node function: %d\n", process_id);
 	jobs * current = head;
 	jobs * prev = NULL;
 	jobs * temp = NULL;
@@ -719,7 +743,6 @@ jobs * remove_node(pid_t process_id){
 		return NULL;
 	}
 	if (head->next == NULL){
-		printf("head->next == NULL\n");
 		if(head->pid == process_id){
 			//free(head->state);
 			free(head->command);
@@ -736,22 +759,22 @@ jobs * remove_node(pid_t process_id){
 	}
 
 	while(current != NULL){
-		printf("current != NULL\n");
+		//printf("current != NULL\n");
 		if(current->pid == process_id){
-			printf("current->pid == process_id\n");
+			//printf("current->pid == process_id\n");
 			//free(current->state);
 			free(current->command);
 			prev->next = current->next;
 			//temp = current->next;
 			free(current);
-			printf("did we successfully remove node?\n");
+			//printf("did we successfully remove node?\n");
 			return head;		
 		}
 		prev = current;
 		current = current->next;
 
 	}
-	printf("remove node success!\n");
+	//printf("remove node success!\n");
 	return head;
 }
 
