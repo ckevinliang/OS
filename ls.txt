@@ -1,6 +1,0 @@
-ls.txt
-makefile
-test
-test1
-yash
-yash.c
